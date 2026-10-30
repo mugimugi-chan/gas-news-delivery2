@@ -1,17 +1,24 @@
 /**
- * スプレッドシートからトピック一覧を取得し、2ステップ（調査→要約）でニュース本文を生成する
- * @returns {Object} { summary: string, dateStr: string }
+ * configシートからトピック一覧を取得し、2ステップ（調査→要約）でニュース本文を生成して
+ * cacheシートの A1 セルへ書き込んで保存する（朝6:30実行用）
  */
-function generateNewsSummary() {
+function fetchAndCacheNewsSummary() {
   try {
-    const sheetName = 'config';  // シートの名前を入力(スプレッドシートの名前ではない)
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const configSheetName = 'config';
+    const sheet = ss.getSheetByName(configSheetName);
     if (!sheet) {
-      throw new Error(`「${sheetName}」シートが見つかりません。`);
+      throw new Error(`「${configSheetName}」シートが見つかりません。`);
     }
     const lastRow = sheet.getLastRow();
     if (lastRow < 2) {
       throw new Error("スプレッドシートにデータが存在しません。");
+    }
+
+    const cacheSheetName = 'cache';
+    const cacheSheet = ss.getSheetByName(cacheSheetName);
+    if (!cacheSheet) {
+      throw new Error(`「${cacheSheetName}」シートが見つかりません。`);
     }
 
     const rows = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
@@ -40,6 +47,7 @@ ${refUrl}
 余計な解説は不要です。収集した生のニュース情報・事実関係（ファクト）を箇条書きで漏れなく挙げてください。`;
 
       const rawResearchData = callGemini(researchPrompt);
+      Utilities.sleep(1000); // スパイク防止用のウェイト
 
       // ステップ2: 要約・整形（サマリーフェーズ）
       const summarizePrompt = `あなたは多忙なビジネスパーソン向けに朝刊を配信する編集者です。
@@ -61,6 +69,7 @@ ${instruction}
 4. Markdown記号（###, **, --- 等）は使用禁止。見出しは「1. タイトル」の形式のみ使用してください。`;
 
       const finalTopicSummary = callGemini(summarizePrompt);
+      Utilities.sleep(1000); // スパイク防止用のウェイト
 
       aggregatedResults.push(`■ ${topic}\n${finalTopicSummary.trim()}`);
     });
@@ -71,6 +80,16 @@ ${instruction}
     const yyyyMMdd = Utilities.formatDate(now, "JST", "yyyy.MM.dd");
     const dayOfWeek = weekDays[now.getDay()];
     const dateStr = `${yyyyMMdd} (${dayOfWeek})`;
+
+    // 💾 cache シートの A1 セルへ結果を保存
+    const payload = JSON.stringify({ 
+      summary: summary, 
+      dateStr: dateStr, 
+      updatedAt: now.toISOString() 
+    });
+    
+    cacheSheet.getRange('A1').setValue(payload);
+    console.log("--- ニュースの生成および cache シートへの書き込みが完了しました ---");
 
     return { summary, dateStr };
 

@@ -1,44 +1,52 @@
+// ⏰ キャッシュ作成および配信目標時刻
+// ※ キャッシュ生成の「分」はGASの仕様上 0, 15, 30, 45 のいずれかを推奨
+const TARGET_CACHE_TIME = "06:30:00";
+const TARGET_DELIVERY_TIME = "08:00:00";
+
 /**
- * 毎日深夜に自動実行され、当日の「朝8:00ジャスト」に実行される特定日時トリガーを作成する関数
+ * 毎朝6:30のニュース生成・キャッシュと、8:00ジャスト配信タイマーを生成する親トリガー設定
  * （この関数自体を毎朝1:00〜2:00等の日次トリガーにセットしておきます）
  */
-function setDaily8AMTrigger() {
-  // 過去の使い終わりトリガーが残らないよう一度お掃除
-  deleteAllTriggers_();
+function makeTriggers() {
+  deleteAllTriggers();
 
-  // 当日（または翌日）の8:00:00のDateオブジェクトを作成
+  // 1. 毎朝 TARGET_CACHE_TIME にニュースを生成して cache シートへ保存
+  //    ※ TARGET_DELIVERY_TIME より前にキャッシュを作成しておくこと
+  ScriptApp.newTrigger('fetchAndCacheNewsSummary')
+    .timeBased()
+    .everyDays(1)
+    .atHour(Number(TARGET_CACHE_TIME.split(':')[0]))
+    .nearMinute(Number(TARGET_CACHE_TIME.split(':')[1]))
+    .create();
+
+  // 2. TARGET_DELIVERY_TIME に指定した時刻ジャストに発動するピンポイントタイマーを作成
+  const [hours, minutes, seconds] = TARGET_DELIVERY_TIME.split(':').map(Number);
+  
   const today = new Date();
   const targetTime = new Date(
     today.getFullYear(),
     today.getMonth(),
     today.getDate(),
-    8,  // 8時
-    0,  // 0分
-    0   // 0秒
+    hours,   // TARGET_DELIVERY_TIME の時
+    minutes, // TARGET_DELIVERY_TIME の分
+    seconds  // TARGET_DELIVERY_TIME の秒
   );
-
-  // もし深夜に実行した時点で既に8時を過ぎている場合は翌日の8時にセット
-  if (today.getTime() > targetTime.getTime()) {
-    targetTime.setDate(targetTime.getDate() + 1);
-  }
-
-  // 8:00:00 ピンポイント指定でワンショットトリガーを作成
-  ScriptApp.newTrigger('sendDailyNewsToAll')
+  ScriptApp.newTrigger('sendNewsToLine')
     .timeBased()
     .at(targetTime)
     .create();
 
-  console.log(`[Trigger Created] 次回のニュース配信を ${targetTime.toLocaleString()} にセットしました。`);
+  console.log("毎朝 6:30 生成 ➔ 8:00:00 配信のパイプラインを設定しました！");
 }
 
 /**
- * プロジェクト内の古いトリガーをすべて削除する内部関数
+ * プロジェクト内の実行済みの古いトリガーをすべて削除する内部関数
  */
-function deleteAllTriggers_() {
+function deleteAllTriggers() {
   const triggers = ScriptApp.getProjectTriggers();
   triggers.forEach(trigger => {
-    // 自分自身（setDaily8AMTrigger）以外のワンショットトリガー等を削除
-    if (trigger.getHandlerFunction() === 'sendDailyNewsToAll') {
+    // 自分自身（makeTriggers）以外のワンショットトリガー等を削除
+    if (trigger.getHandlerFunction() === 'fetchAndCacheNewsSummary' || trigger.getHandlerFunction() === 'sendNewsToLine') {
       ScriptApp.deleteTrigger(trigger);
     }
   });

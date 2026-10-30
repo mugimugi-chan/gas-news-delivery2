@@ -1,5 +1,5 @@
 // 🎨 LINEカードデザインのカラー設定
-const LINE_THEME = {
+const LINE_THEME_2 = {
   HEADER_BG: "#0284C7",   // 清々しいスカイブルー（ヘッダー背景）
   HEADER_TEXT: "#FFFFFF", // ヘッダー文字色（白）
   TITLE_TEXT: "#0369A1",  // 見出し文字色（深みのあるブルー）
@@ -7,11 +7,50 @@ const LINE_THEME = {
 };
 
 /**
+ * cache シートの A1 から要約データを取得し、LINEへ配信する（朝8:00実行用）
+ */
+function sendNewsToLine() {
+  Logger.log("--- 本番配信処理（キャッシュ読み込み）を開始します ---");
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const cacheSheet = ss.getSheetByName('cache');
+  if (!cacheSheet) {
+    Logger.log("【LINE Error】「cache」シートが見つかりません。");
+    return;
+  }
+
+  const rawData = cacheSheet.getRange('A1').getValue();
+  if (!rawData) {
+    Logger.log("【LINE Error】cache シートの A1 セルが空です。事前にニュース生成が実行されていない可能性があります。");
+    return;
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(rawData);
+  } catch (e) {
+    Logger.log("【LINE Error】cache データの JSON パースに失敗しました: " + e.toString());
+    return;
+  }
+
+  const { summary, dateStr } = parsed;
+  if (!summary || !dateStr) {
+    Logger.log("【LINE Error】キャッシュデータの形式が不正です（summary または dateStr が不足）。");
+    return;
+  }
+
+  // LINE配信を実行
+  sendLineFlexMessage(summary, dateStr);
+
+  Logger.log("--- 本番配信処理が完了しました ---");
+}
+
+/**
  * 要約テキストと日付を受け取り、Flex Messageを構築してLINE友だち全員に一括配信する
  * @param {string} summary - 配信するニュース本文
- * @param {string} dateStr - ヘッダーに表示する日付文字列（例: "2026.10.29 THU"）
+ * @param {string} dateStr - ヘッダーに表示する日付文字列（例: "2026.10.29 (木)"）
  */
-function sendLineFlexNotification(summary, dateStr) {
+function sendLineFlexMessage(summary, dateStr) {
   const props = PropertiesService.getScriptProperties();
   const token = props.getProperty('LINE_CHANNEL_ACCESS_TOKEN');
 
@@ -68,7 +107,7 @@ function sendLineFlexNotification(summary, dateStr) {
 function buildFlexMessage_(summary, dateStr) {
   // 1. Markdown記号のサニタイズ（徹底掃除）
   let cleanSummary = summary
-    .replace(/^#{1,6}\s*/gm, '')  // 行頭の ### や ## を削除
+    .replace(/^#{1,6}\s*/gm, '')     // 行頭の ### や ## を削除
     .replace(/^[-*_]{3,}\s*$/gm, '') // --- や *** などの区切り線を削除
     .replace(/\*\*(.*?)\*\*/g, '$1') // **太字** を通常の文字列に変換
     .replace(/\*(.*?)\*/g, '$1')     // *斜体* を通常の文字列に変換
@@ -87,7 +126,7 @@ function buildFlexMessage_(summary, dateStr) {
         text: line,
         weight: "bold",
         size: "md",
-        color: LINE_THEME.TITLE_TEXT,
+        color: LINE_THEME_2.TITLE_TEXT,
         wrap: true,
         margin: "md"
       });
@@ -97,7 +136,7 @@ function buildFlexMessage_(summary, dateStr) {
         type: "text",
         text: line,
         size: "sm",
-        color: LINE_THEME.BODY_TEXT,
+        color: LINE_THEME_2.BODY_TEXT,
         wrap: true,
         margin: "xs"
       });
@@ -109,19 +148,19 @@ function buildFlexMessage_(summary, dateStr) {
     header: {
       type: "box",
       layout: "vertical",
-      backgroundColor: LINE_THEME.HEADER_BG,
+      backgroundColor: LINE_THEME_2.HEADER_BG,
       contents: [
         {
           type: "text",
           text: "🗞️ 朝刊のむぎちゃん",
           weight: "bold",
-          color: LINE_THEME.HEADER_TEXT,
+          color: LINE_THEME_2.HEADER_TEXT,
           size: "lg"
         },
         {
           type: "text",
           text: dateStr,
-          color: LINE_THEME.HEADER_TEXT,
+          color: LINE_THEME_2.HEADER_TEXT,
           size: "xs",
           margin: "xs"
         }
